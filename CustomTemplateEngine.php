@@ -13,7 +13,6 @@ use REDCap;
 use Project;
 use Records;
 use Dompdf\Dompdf;
-use ZipArchive;
 use DOMDocument;
 use HtmlPage;
 
@@ -1176,107 +1175,6 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
         }
     }
 
-    public function downloadAllTemplates()
-    {
-        $ensat_id = REDCap::getData()[1][84]["shipment_ensat_id"];
-
-        $header = REDCap::filterHtml(preg_replace("/&nbsp;/", " ", $_POST["header-editor"]));
-        $footer = REDCap::filterHtml(preg_replace("/&nbsp;/", " ", $_POST["footer-editor"]));
-
-        $filled_mains = unserialize(base64_decode($_POST["filled_mains"]));
-        $filenames = unserialize(base64_decode($_POST["filenames"]));
-
-        $outFiles = array();
-
-        for ($i = 0; $i <= count($filled_mains)-1; $i++) {
-          if (isset($filled_mains[$i]) && !empty($filled_mains[$i]) && isset($filenames[$i]) && !empty($filenames[$i])){
-            $doc = new DOMDocument();
-            $doc->loadHtml("
-                <!DOCTYPE html>
-                <html>
-                    <head>
-                        <meta http-equiv='Content-Type' content='text/html; charset=utf-8'/>
-                    </head>
-                    <body>
-                        <header>$header</header>
-                        <footer>$footer</footer>
-                        <main>$filled_mains[$i]</main>
-                        <script type='text/php'>
-                            // Add page number and timestamp to every page
-                            if (isset(\$pdf)) {
-                                \$pdf->page_script('
-                                    \$font = \$fontMetrics->get_font(\"Arial, Helvetica, sans-serif\", \"normal\");
-                                    \$size = 12;
-                                    \$pageNum = \"Page \" . \$PAGE_NUM . \" of \" . \$PAGE_COUNT;
-                                    \$y = 750;
-                                    \$pdf->text(520, \$y, \$pageNum, \$font, \$size);
-                                    \$pdf->text(36, \$y, date(\"Y-m-d H:i:s\", time()), \$font, \$size);
-                                ');
-                            }
-                        </script>
-                    </body>
-                </html>
-            ");
-
-            // DOMPdf renders what's passed in, and if default font-size is used then
-            // the editor will use what's in app.css. Set the general CSS to be 12px.
-            // Any styling done by the user should appear as inline styling, which should
-            // override this.
-            if (!empty($header) && !empty($footer))
-            {
-                $style = $doc->createElement("style", "body, body > table { font-size: 12px; margin-top: 25px; } header { position: fixed; left: 0px; top: -100px; } footer { position: fixed; left: 0px; bottom:0px; } @page { margin: 130px 50px; }");
-            }
-            else if (!empty($header))
-            {
-                $style = $doc->createElement("style", "body, body > table { font-size: 12px; margin-top: 15px; } header { position: fixed; left: 0px; top: -100px; } @page { margin: 130px 50px 50px 50px; }");
-            }
-            else if (!empty($footer))
-            {
-                $style = $doc->createElement("style", "body, body > table { font-size: 12px; margin-top: 15px; } footer { position: fixed; left: 0px; bottom: 0px; } @page { margin: 50px 50px 130px 50px; }");
-            }
-            else
-            {
-                $style = $doc->createElement("style", "body, body > table { font-size: 12px;} @page { margin: 50px 50px; }");
-            }
-
-            $doc->appendChild($style);
-
-            // Add page numbers to the footer of every page
-            $dompdf = new Dompdf();
-            $dompdf->set_option("isHtml5ParserEnabled", true);
-            $dompdf->set_option("isPhpEnabled", true);
-            $dompdf->loadHtml($doc->saveHtml());
-
-            // Setup the paper size and orientation
-            $dompdf->setPaper("letter", "portrait");
-
-            // Render the HTML as PDF
-            $dompdf->render();
-
-            $output = $dompdf->output();
-            file_put_contents(getenv("DOCUMENT_ROOT")."/".$filenames[$i].".pdf", $output);
-            array_push($outFiles, $filenames[$i].".pdf");
-        }
-      }
-
-      // [Entry_ID][Event_ID]
-      $zipname = "FilledTemplates.zip";
-      $zip = new ZipArchive;
-      $zip->open(getenv("DOCUMENT_ROOT")."/".$zipname, ZipArchive::CREATE);
-      foreach ($outFiles as $outFile){
-        $zip->addFile(getenv("DOCUMENT_ROOT")."/".$outFile, $outFile);
-      }
-      $zip->close();
-
-      header("Content-type: application/zip");
-      header("Content-Disposition: attachment; filename=$zipname");
-      header("Content-length: " . filesize(getenv("DOCUMENT_ROOT")."/".$zipname));
-      header("Pragma: no-cache");
-      header("Expires: 0");
-      flush();
-      readfile(getenv("DOCUMENT_ROOT")."/".$zipname);
-    }
-
     /**
      * Outputs a PDF of a report to browser.
      *
@@ -1507,158 +1405,6 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
         print $instrument_pdf_contents;
     }
 
-    public function generateFillAllTemplatesPage(){
-      $rights = REDCap::getUserRights($this->userid);
-      if ($rights[$this->userid]["data_export_tool"] === "0")
-      {
-          exit("<div class='red'>You don't have premission to view this page</div><a href='" . $this->getUrl("index.php") . "'>Back to Front</a>");
-      }
-
-      $filled_mains = array();
-      $filenames = array();
-      $template = new Template($this->templates_dir, $this->compiled_dir);
-      $template_suffix = "_".$this->getProjectId().".html";
-      $redcap_data = REDCap::getData();
-
-      foreach($redcap_data as $record_data) {
-        foreach($record_data["repeat_instances"] as $event_data) {
-          foreach($event_data["manifest"] as $manifest_data) {
-            $ensat_id = $manifest_data["shipment_ensat_id"];
-            $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
-            $template_filenames = array();
-
-            // These template filenames are case sensitive
-            // All the templates need to exist
-            if(isset($manifest_data["phase_1_sp"])){
-              array_push($template_filenames, "Screening steroid profile".$template_suffix);
-            }
-
-            if(isset($manifest_data["phase_2_sit_bl_sp"]) && isset($manifest_data["phase_2_sit_4h_sp"])){
-              array_push($template_filenames, "Confirmation SIT profile".$template_suffix);
-            }
-
-            if(isset($manifest_data["phase_2_dexa"])){
-              array_push($template_filenames, "Post DST steroid profile".$template_suffix);
-            }
-
-            if(isset($manifest_data["phase_3_rpv_sp"]) || isset($manifest_data["phase_3_lpv_sp"]) || isset($manifest_data["phase_3_rav_sp"]) || isset($manifest_data["phase_3_lav_sp"])){
-              array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
-            }
-
-            if(isset($manifest_data["phase_4_fu_sp"])){
-              array_push($template_filenames, "3 month follow up".$template_suffix);
-              array_push($template_filenames, "6-12 month follow up".$template_suffix);
-            }
-
-            foreach($template_filenames as $template_filename) {
-              try
-              {
-                  $filled_template = $template->fillTemplate($template_filename, $shipment_prosaldo_id);
-
-                  $doc = new DOMDocument();
-                  $doc->loadHTML($filled_template);
-
-                  $header = $doc->getElementsByTagName("header")->item(0);
-                  $footer = $doc->getElementsByTagName("footer")->item(0);
-                  $main = $doc->getElementsByTagName("main")->item(0);
-
-                  $filled_main = $doc->saveHTML($main);
-                  $filled_header = empty($header) ? "" : $doc->saveHTML($header);
-                  $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
-
-                  array_push($filled_mains, $filled_main);
-
-                  $template_name = str_replace($template_suffix, "", $template_filename);
-                  array_push($filenames, $ensat_id."-".$template_name."-".$shipment_prosaldo_id);
-              }
-              catch (Exception $e)
-              {
-                  $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
-              }
-            }
-          }
-        }
-      }
-
-      ?>
-      <link rel="stylesheet" href="<?php print $this->getUrl("app.css"); ?>" type="text/css">
-      <div class="container">
-          <div class="jumbotron">
-              <div class="row">
-                  <div class="col-md-10">
-                      <h3>Download Templates</h3>
-                  </div>
-                  <div class="col-md-2">
-                      <a class="btn btn-primary" style="color:white" href="<?php print $this->getUrl("index.php");?>">Back to Front</a>
-                  </div>
-              </div>
-              <hr/>
-              <?php if (!empty($errors)) :?>
-                  <div class="red container">
-                      <h4>Error filling template! Please contact your REDCap administrator!</h4>
-                      <p><a id="readmore-link" href="#">Click to view errors</a></p>
-                      <div id="readmore" style="display:none">
-                          <?php
-                              foreach($errors as $error)
-                              {
-                                  print "<p>$error</p>";
-                              }
-                          ?>
-                      </div>
-                  </div>
-                  <hr/>
-              <?php endif;?>
-              <div class="container syntax-rule">
-                  <h4><u>Instructions</u></h4>
-                  <p>You may download the report as is, or edit until you're satisfied, then download. You may also copy/paste the report into another editor and save, if you prefer a format other than PDF.</p>
-                  <p><strong style="color:red">**IMPORTANT**</strong></p>
-                  <ul>
-                      <li>Tables and images may be cut off in PDF, because of size. If so, there is no current fix and you must edit your content until it fits. Some suggestions are to break up content into
-                      multiple tables, shrink font, etc...</li>
-                      <li>Any image uploaded to the plugin will be saved for future use by <strong>ALL</strong> users. <strong>Do not upload any identifying images.</strong></li>
-                      <li>Calculations cannot be performed in the Template Engine, so raw values have been exported.</li>
-                      <li>Fields in a repeatable event or instrument had their data pulled from the latest instance.</li>
-                      <?php if ($rights[$user]["data_export_tool"] === "2") :?>
-                          <li> Data has been de-identified according to user access rights</li>
-                      <?php endif;?>
-                  </ul>
-              </div>
-              <br/>
-              <form action="<?php print $this->getUrl("DownloadAllFilledTemplates.php"); ?>" method="post">
-                  <div class="row" style="margin-bottom:20px">
-                      <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary">Download PDFs</button></div>
-                      <div class="col-md-3"><button id="download-pdf" type="button" class="btn btn-primary" data-toggle="modal" data-target="#downloadInstrumentModal" style="display:none">Download Instrument Data</button></div>
-                  </div>
-                  <div class="collapsible-container">
-                      <button type="button" class="collapsible">Add Header **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
-                      <div class="collapsible-content">
-                          <p>Anything in the header will appear at the top of every page in the template. <strong>If the header content is too big, it will overlap template data in the PDF.</strong></p>
-                          <textarea cols="80" id="header-editor" name="header-editor" rows="10">
-                              <?php print $filled_header;?>
-                          </textarea>
-                      </div>
-                  </div>
-                  <div class="collapsible-container">
-                      <button type="button" class="collapsible">Add Footer **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
-                      <div class="collapsible-content">
-                          <p>Anything in the footer will appear at the bottom of every page in the template. <strong>If the footer content is too big, it will cuttoff in the PDF.</strong></p>
-                          <textarea cols="80" id="footer-editor" name="footer-editor" rows="10">
-                              <?php print $filled_footer;?>
-                          </textarea>
-                      </div>
-                  </div>
-                  <input id="filled_mains" name="filled_mains" type="hidden" value="<?php print base64_encode(serialize($filled_mains));?>">
-                  <input id="filenames" name="filenames" type="hidden" value="<?php print base64_encode(serialize($filenames));?>">
-              </form>
-          </div>
-      </div>
-      <script src="<?php print $this->getUrl("vendor/ckeditor/ckeditor/ckeditor.js"); ?>"></script>
-      <script src="<?php print $this->getUrl("scripts.js"); ?>"></script>
-      <?php
-          $this->initializeEditor("header-editor", 200);
-          $this->initializeEditor("footer-editor", 200);
-    }
-
     /**
      * Fills a template with REDCap record data, and displays in
      * editors for customization, before download.
@@ -1673,247 +1419,247 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
      */
     public function generateFillTemplatePage()
     {
-      $rights = REDCap::getUserRights($this->userid);
-      if ($rights[$this->userid]["data_export_tool"] === "0")
-      {
-          exit("<div class='red'>You don't have premission to view this page</div><a href='" . $this->getUrl("index.php") . "'>Back to Front</a>");
-      }
+        $rights = REDCap::getUserRights($this->userid);
+        if ($rights[$this->userid]["data_export_tool"] === "0")
+        {
+            exit("<div class='red'>You don't have premission to view this page</div><a href='" . $this->getUrl("index.php") . "'>Back to Front</a>");
+        }
 
-      $record = $_POST["participantID"];
+        $record = $_POST["participantID"];
 
-      if (empty($record))
-      {
-          // OPTIONAL: Display the project header
-          exit("<div class='red'>No record has been select. Please go back and select a record to fill the template.</div><a href='" . $this->getUrl("index.php") . "'>Back to Front</a>");
-      }
+        if (empty($record))
+        {
+            // OPTIONAL: Display the project header
+            exit("<div class='red'>No record has been select. Please go back and select a record to fill the template.</div><a href='" . $this->getUrl("index.php") . "'>Back to Front</a>");
+        }
 
-      $template_filename = $_POST['template'];
-      $template = new Template($this->templates_dir, $this->compiled_dir);
+        $template_filename = $_POST['template'];
+        $template = new Template($this->templates_dir, $this->compiled_dir);
 
-      try
-      {
-          $filled_template = $template->fillTemplate($template_filename, $record);
+        try
+        {
+            $filled_template = $template->fillTemplate($template_filename, $record);
 
-          $doc = new DOMDocument();
-          $doc->loadHTML($filled_template);
+            $doc = new DOMDocument();
+            $doc->loadHTML($filled_template);
 
-          $header = $doc->getElementsByTagName("header")->item(0);
-          $footer = $doc->getElementsByTagName("footer")->item(0);
-          $main = $doc->getElementsByTagName("main")->item(0);
+            $header = $doc->getElementsByTagName("header")->item(0);
+            $footer = $doc->getElementsByTagName("footer")->item(0);
+            $main = $doc->getElementsByTagName("main")->item(0);
 
-          $filled_main = $doc->saveHTML($main);
-          $filled_header = empty($header) ? "" : $doc->saveHTML($header);
-          $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
-      }
-      catch (Exception $e)
-      {
-          $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
-      }
-      ?>
-      <link rel="stylesheet" href="<?php print $this->getUrl("app.css"); ?>" type="text/css">
-      <div class="container">
-          <div class="jumbotron">
-              <div class="row">
-                  <div class="col-md-10">
-                      <h3>Download Template</h3>
-                  </div>
-                  <div class="col-md-2">
-                      <a class="btn btn-primary" style="color:white" href="<?php print $this->getUrl("index.php");?>">Back to Front</a>
-                  </div>
-              </div>
-              <hr/>
-              <?php if (!empty($errors)) :?>
-                  <div class="red container">
-                      <h4>Error filling template! Please contact your REDCap administrator!</h4>
-                      <p><a id="readmore-link" href="#">Click to view errors</a></p>
-                      <div id="readmore" style="display:none">
-                          <?php
-                              foreach($errors as $error)
-                              {
-                                  print "<p>$error</p>";
-                              }
-                          ?>
-                      </div>
-                  </div>
-                  <hr/>
-              <?php endif;?>
-              <div class="container syntax-rule">
-                  <h4><u>Instructions</u></h4>
-                  <p>You may download the report as is, or edit until you're satisfied, then download. You may also copy/paste the report into another editor and save, if you prefer a format other than PDF.</p>
-                  <p><strong style="color:red">**IMPORTANT**</strong></p>
-                  <ul>
-                      <li>Tables and images may be cut off in PDF, because of size. If so, there is no current fix and you must edit your content until it fits. Some suggestions are to break up content into
-                      multiple tables, shrink font, etc...</li>
-                      <li>Any image uploaded to the plugin will be saved for future use by <strong>ALL</strong> users. <strong>Do not upload any identifying images.</strong></li>
-                      <li>Calculations cannot be performed in the Template Engine, so raw values have been exported.</li>
-                      <li>Fields in a repeatable event or instrument had their data pulled from the latest instance.</li>
-                      <?php if ($rights[$user]["data_export_tool"] === "2") :?>
-                          <li> Data has been de-identified according to user access rights</li>
-                      <?php endif;?>
-                  </ul>
-                  <?php if ($this->getProjectSetting("save-report-to-repo")) :?>
-                      <div class="green" style="max-width: initial;">
-                          <p>This module can save reports to the File Repository, upon download. This is currently <strong>enabled</strong> if you'd like to disable this contact your REDCap administrator.</p>
-                      </div>
-                  <?php else: ?>
-                      <div class="red" style="max-width: initial;">
-                          <p> This module can save reports to the File Repository,  upon download. This is currently <strong>disabled</strong>, but if you'd like to enable this contact your REDCap administrator.</p>
-                      </div>
-                  <?php endif;?>
-              </div>
-              <br/>
-              <form action="<?php print $this->getUrl("DownloadFilledTemplate.php"); ?>" method="post">
-                  <table class="table" style="width:100%;">
-                      <tbody>
-                          <tr>
-                              <td style="width:25%;">Template Name <strong style="color:red">* Required</strong></td>
-                              <td class="data">
-                                  <div class="row">
-                                      <div class="col-md-5">
-                                          <input id="filename" name="filename" type="text" class="form-control" value="<?php print basename($template_filename, "_$this->pid.html") . " - $record";?>" required>
-                                      </div>
-                                  </div>
-                              </td>
-                          </tr>
-                      </tbody>
-                  </table>
-                  <div class="row" style="margin-bottom:20px">
-                      <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary">Download PDF</button></div>
-                      <div class="col-md-3"><button id="download-pdf" type="button" class="btn btn-primary" data-toggle="modal" data-target="#downloadInstrumentModal" style="display:none">Download Instrument Data</button></div>
-                  </div>
-                  <div class="collapsible-container">
-                      <button type="button" class="collapsible">Add Header **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
-                      <div class="collapsible-content">
-                          <p>Anything in the header will appear at the top of every page in the template. <strong>If the header content is too big, it will overlap template data in the PDF.</strong></p>
-                          <textarea cols="80" id="header-editor" name="header-editor" rows="10">
-                              <?php print $filled_header;?>
-                          </textarea>
-                      </div>
-                  </div>
-                  <div class="collapsible-container">
-                      <button type="button" class="collapsible">Add Footer **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
-                      <div class="collapsible-content">
-                          <p>Anything in the footer will appear at the bottom of every page in the template. <strong>If the footer content is too big, it will cuttoff in the PDF.</strong></p>
-                          <textarea cols="80" id="footer-editor" name="footer-editor" rows="10">
-                              <?php print $filled_footer;?>
-                          </textarea>
-                      </div>
-                  </div>
-                  <div style="margin-top:20px">
-                      <textarea cols="80" id="editor" name="editor" rows="10">
-                          <?php print $filled_main; ?>
-                      </textarea>
-                  </div>
-              </form>
-              <div class="modal fade" id="downloadInstrumentModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
-                  <div class="modal-dialog modal-dialog-centered" role="document">
-                      <div class="modal-content">
-                          <div class="modal-header">
-                              <h5>Select Instrument to Download</h5>
-                              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                              <span aria-hidden="true">&times;</span>
-                              </button>
-                          </div>
-                          <form action=<?php print $this->getUrl("DownloadInstrument.php");?> method="post">
-                              <div class="modal-body">
-                                  <p><i>An instrument without any data will produce a blank PDF</i></p>
-                                  <select id="attach-instrument" name="attach-instrument" class="form-control attach-select">
-                                          <option value="">--Select Instrument--</option>
-                                          <?php
-                                              $instruments = REDCap::getInstrumentNames();
-                                              foreach($instruments as $unique_name => $label)
-                                              {
-                                                  print "<option value='$unique_name'>$label</option>";
-                                              }
-                                          ?>
-                                  </select>
-                                  <?php if (REDCap::isLongitudinal()): ?>
-                                      <p style="text-align:center">of</p>
-                                      <select id="attach-event" name="attach-event" class="form-control attach-select">
-                                          <option value="">--Select Event--</option>
-                                      </select>
-                                  <?php endif;?>
-                                  <input name="record" type="hidden" value="<?php print $record; ?>">
-                              </div>
-                              <div class="modal-footer">
-                                  <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                                  <button type="submit" class="btn btn-primary" id="download-instrument-btn" disabled>Download</button>
-                              </div>
-                          </form>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </div>
-      <script src="<?php print $this->getUrl("vendor/ckeditor/ckeditor/ckeditor.js"); ?>"></script>
-      <script src="<?php print $this->getUrl("scripts.js"); ?>"></script>
-      <?php
-          $events = REDCap::getEventNames(true);
-          if ($events !== FALSE)
-          {
-              $str = implode(",", array_keys($events));
-              $events_query = "SELECT * FROM redcap_events_forms where event_id in ($str)";
-              $result = $this->query($events_query);
-              while($row = mysqli_fetch_assoc($result))
-              {
-                  $event_forms[$row["form_name"]][] = $row["event_id"];
-              }
-          }
+            $filled_main = $doc->saveHTML($main);
+            $filled_header = empty($header) ? "" : $doc->saveHTML($header);
+            $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
+        }
+        catch (Exception $e)
+        {
+            $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
+        }
+        ?>
+        <link rel="stylesheet" href="<?php print $this->getUrl("app.css"); ?>" type="text/css">
+        <div class="container">
+            <div class="jumbotron">
+                <div class="row">
+                    <div class="col-md-10">
+                        <h3>Download Template</h3>
+                    </div>
+                    <div class="col-md-2">
+                        <a class="btn btn-primary" style="color:white" href="<?php print $this->getUrl("index.php");?>">Back to Front</a>
+                    </div>
+                </div>
+                <hr/>
+                <?php if (!empty($errors)) :?>
+                    <div class="red container">
+                        <h4>Error filling template! Please contact your REDCap administrator!</h4>
+                        <p><a id="readmore-link" href="#">Click to view errors</a></p>
+                        <div id="readmore" style="display:none">
+                            <?php
+                                foreach($errors as $error)
+                                {
+                                    print "<p>$error</p>";
+                                }
+                            ?>
+                        </div>
+                    </div>
+                    <hr/>
+                <?php endif;?>
+                <div class="container syntax-rule">
+                    <h4><u>Instructions</u></h4>
+                    <p>You may download the report as is, or edit until you're satisfied, then download. You may also copy/paste the report into another editor and save, if you prefer a format other than PDF.</p>
+                    <p><strong style="color:red">**IMPORTANT**</strong></p>
+                    <ul>
+                        <li>Tables and images may be cut off in PDF, because of size. If so, there is no current fix and you must edit your content until it fits. Some suggestions are to break up content into
+                        multiple tables, shrink font, etc...</li>
+                        <li>Any image uploaded to the plugin will be saved for future use by <strong>ALL</strong> users. <strong>Do not upload any identifying images.</strong></li>
+                        <li>Calculations cannot be performed in the Template Engine, so raw values have been exported.</li>
+                        <li>Fields in a repeatable event or instrument had their data pulled from the latest instance.</li>
+                        <?php if ($rights[$user]["data_export_tool"] === "2") :?>
+                            <li> Data has been de-identified according to user access rights</li>
+                        <?php endif;?>
+                    </ul>
+                    <?php if ($this->getProjectSetting("save-report-to-repo")) :?>
+                        <div class="green" style="max-width: initial;">
+                            <p>This module can save reports to the File Repository, upon download. This is currently <strong>enabled</strong> if you'd like to disable this contact your REDCap administrator.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="red" style="max-width: initial;">
+                            <p> This module can save reports to the File Repository,  upon download. This is currently <strong>disabled</strong>, but if you'd like to enable this contact your REDCap administrator.</p>
+                        </div>
+                    <?php endif;?>
+                </div>
+                <br/>
+                <form action="<?php print $this->getUrl("DownloadFilledTemplate.php"); ?>" method="post">
+                    <table class="table" style="width:100%;">
+                        <tbody>
+                            <tr>
+                                <td style="width:25%;">Template Name <strong style="color:red">* Required</strong></td>
+                                <td class="data">
+                                    <div class="row">
+                                        <div class="col-md-5">
+                                            <input id="filename" name="filename" type="text" class="form-control" value="<?php print basename($template_filename, "_$this->pid.html") . " - $record";?>" required>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="row" style="margin-bottom:20px">
+                        <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary">Download PDF</button></div>
+                        <div class="col-md-3"><button id="download-pdf" type="button" class="btn btn-primary" data-toggle="modal" data-target="#downloadInstrumentModal" style="display:none">Download Instrument Data</button></div>
+                    </div>
+                    <div class="collapsible-container">
+                        <button type="button" class="collapsible">Add Header **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
+                        <div class="collapsible-content">
+                            <p>Anything in the header will appear at the top of every page in the template. <strong>If the header content is too big, it will overlap template data in the PDF.</strong></p>
+                            <textarea cols="80" id="header-editor" name="header-editor" rows="10">
+                                <?php print $filled_header;?>
+                            </textarea>
+                        </div>
+                    </div>
+                    <div class="collapsible-container">
+                        <button type="button" class="collapsible">Add Footer **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
+                        <div class="collapsible-content">
+                            <p>Anything in the footer will appear at the bottom of every page in the template. <strong>If the footer content is too big, it will cuttoff in the PDF.</strong></p>
+                            <textarea cols="80" id="footer-editor" name="footer-editor" rows="10">
+                                <?php print $filled_footer;?>
+                            </textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top:20px">
+                        <textarea cols="80" id="editor" name="editor" rows="10">
+                            <?php print $filled_main; ?>
+                        </textarea>
+                    </div>
+                </form>
+                <div class="modal fade" id="downloadInstrumentModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5>Select Instrument to Download</h5>
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <form action=<?php print $this->getUrl("DownloadInstrument.php");?> method="post">
+                                <div class="modal-body">
+                                    <p><i>An instrument without any data will produce a blank PDF</i></p>
+                                    <select id="attach-instrument" name="attach-instrument" class="form-control attach-select">
+                                            <option value="">--Select Instrument--</option>
+                                            <?php
+                                                $instruments = REDCap::getInstrumentNames();
+                                                foreach($instruments as $unique_name => $label)
+                                                {
+                                                    print "<option value='$unique_name'>$label</option>";
+                                                }
+                                            ?>
+                                    </select>
+                                    <?php if (REDCap::isLongitudinal()): ?>
+                                        <p style="text-align:center">of</p>
+                                        <select id="attach-event" name="attach-event" class="form-control attach-select">
+                                            <option value="">--Select Event--</option>
+                                        </select>
+                                    <?php endif;?>
+                                    <input name="record" type="hidden" value="<?php print $record; ?>">
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                    <button type="submit" class="btn btn-primary" id="download-instrument-btn" disabled>Download</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script src="<?php print $this->getUrl("vendor/ckeditor/ckeditor/ckeditor.js"); ?>"></script>
+        <script src="<?php print $this->getUrl("scripts.js"); ?>"></script>
+        <?php
+            $events = REDCap::getEventNames(true);
+            if ($events !== FALSE)
+            {
+                $str = implode(",", array_keys($events));
+                $events_query = "SELECT * FROM redcap_events_forms where event_id in ($str)";
+                $result = $this->query($events_query);
+                while($row = mysqli_fetch_assoc($result))
+                {
+                    $event_forms[$row["form_name"]][] = $row["event_id"];
+                }
+            }
 
-          print "<script> var event_forms = {";
-          foreach($event_forms as $form => $ids)
-          {
-              print "$form:[";
-              foreach($ids as $id)
-              {
-                  print "{name:'" . $events[$id] . "', value:" . $id . "},";
-              }
-              print "],";
-          }
-          print "};
-          CKEDITOR.dtd.\$removeEmpty['p'] = true;
-          $('#attach-instrument').change(function() {
-              var key = $(this).val();
-              $('#attach-event option:gt(0)').remove(); // remove old options
-              $.each(event_forms[key], function(name,value) {
-                  $('#attach-event').append($('<option></option>').attr('value', value.value).text(value.name));
-              });
-          });
-          ";
-          if (REDCap::isLongitudinal())
-          {
-              print "
-              $('.attach-select').change(function() {
-                  if ($('#attach-instrument').val() != '' && $('#attach-event').val() != '')
-                  {
-                      $('#download-instrument-btn').attr('disabled', false);
-                  }
-                  else
-                  {
-                      $('#download-instrument-btn').attr('disabled', true);
-                  }
-              })
-              ";
-          }
-          else
-          {
-              print "
-              $('.attach-select').change(function() {
-                  if ($('#attach-instrument').val() != '')
-                  {
-                      $('#download-instrument-btn').attr('disabled', false);
-                  }
-                  else
-                  {
-                      $('#download-instrument-btn').attr('disabled', true);
-                  }
-              })
-              ";
-          }
-          print "</script>";
-          $this->initializeEditor("header-editor", 200);
-          $this->initializeEditor("footer-editor", 200);
-          $this->initializeEditor("editor", 1000);
+            print "<script> var event_forms = {";
+            foreach($event_forms as $form => $ids)
+            {
+                print "$form:[";
+                foreach($ids as $id)
+                {
+                    print "{name:'" . $events[$id] . "', value:" . $id . "},";
+                }
+                print "],";
+            }
+            print "};
+            CKEDITOR.dtd.\$removeEmpty['p'] = true;
+            $('#attach-instrument').change(function() {
+                var key = $(this).val();
+                $('#attach-event option:gt(0)').remove(); // remove old options
+                $.each(event_forms[key], function(name,value) {
+                    $('#attach-event').append($('<option></option>').attr('value', value.value).text(value.name));
+                });
+            });
+            ";
+            if (REDCap::isLongitudinal())
+            {
+                print "
+                $('.attach-select').change(function() {
+                    if ($('#attach-instrument').val() != '' && $('#attach-event').val() != '')
+                    {
+                        $('#download-instrument-btn').attr('disabled', false);
+                    }
+                    else
+                    {
+                        $('#download-instrument-btn').attr('disabled', true);
+                    }
+                })
+                ";
+            }
+            else
+            {
+                print "
+                $('.attach-select').change(function() {
+                    if ($('#attach-instrument').val() != '')
+                    {
+                        $('#download-instrument-btn').attr('disabled', false);
+                    }
+                    else
+                    {
+                        $('#download-instrument-btn').attr('disabled', true);
+                    }
+                })
+                ";
+            }
+            print "</script>";
+            $this->initializeEditor("header-editor", 200);
+            $this->initializeEditor("footer-editor", 200);
+            $this->initializeEditor("editor", 1000);
     }
 
     /**
@@ -2303,19 +2049,9 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                             </tbody>
                         </table>
                         <?php if (sizeof($valid_templates) > 0 && sizeof($participant_options) > 0):?>
-                            <button type="submit" name="single" class="btn btn-primary">Fill Template For Chosen Record</button>
+                            <button type="submit" class="btn btn-primary">Fill Template</button>
                         <?php else:?>
-                            <button type="submit" name="single" class="btn btn-primary" disabled>Fill Template For Chosen Record</button>
-                            <span><i style="color:red"> **At least one record and one template must exist</i></span>
-                        <?php endif;?>
-                    </form>
-                  </div>
-                  <div class="container syntax-rule">
-                    <form action=<?php print $this->getUrl("FillTemplate.php"); ?> method="post" >
-                        <?php if (sizeof($valid_templates) > 0 && sizeof($participant_options) > 0):?>
-                            <button type="submit" name="all" class="btn btn-primary">Fill Template For Shipment Records</button>
-                        <?php else:?>
-                            <button type="submit" name="all" class="btn btn-primary">Fill Template For Shipment Records</button>
+                            <button type="submit" class="btn btn-primary" disabled>Fill Template</button>
                             <span><i style="color:red"> **At least one record and one template must exist</i></span>
                         <?php endif;?>
                     </form>
