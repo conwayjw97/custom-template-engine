@@ -1518,64 +1518,92 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $filenames = array();
       $template = new Template($this->templates_dir, $this->compiled_dir);
       $template_suffix = "_".$this->getProjectId().".html";
-      $redcap_data = REDCap::getData();
 
-      foreach($redcap_data as $record_data) {
-        foreach($record_data["repeat_instances"] as $event_data) {
-          foreach($event_data["manifest"] as $manifest_data) {
-            $ensat_id = $manifest_data["shipment_ensat_id"];
-            $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
-            $template_filenames = array();
+      $token_file = fopen(getenv("DOCUMENT_ROOT")."/modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
+      $token = trim(fgets($token_file));
+      fclose($token_file);
 
-            // These template filenames are case sensitive
-            // All the templates need to exist
-            if(isset($manifest_data["phase_1_sp"])){
-              array_push($template_filenames, "Screening steroid profile".$template_suffix);
-            }
+      $data = array(
+          'token' => $token,
+          'content' => 'record',
+          'format' => 'json',
+          'type' => 'flat',
+          'forms' => array('manifest'),
+          'rawOrLabel' => 'raw',
+          'rawOrLabelHeaders' => 'raw',
+          'exportCheckboxLabel' => 'false',
+          'exportSurveyFields' => 'false',
+          'exportDataAccessGroups' => 'false',
+          'returnFormat' => 'json'
+      );
+      $ch = curl_init();
+      curl_setopt($ch, CURLOPT_URL, 'http://localhost/api/');
+      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+      curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+      curl_setopt($ch, CURLOPT_VERBOSE, 0);
+      curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+      curl_setopt($ch, CURLOPT_AUTOREFERER, true);
+      curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
+      curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+      curl_setopt($ch, CURLOPT_FRESH_CONNECT, 1);
+      curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data, '', '&'));
+      $output = curl_exec($ch);
+      curl_close($ch);
 
-            if(isset($manifest_data["phase_2_sit_bl_sp"]) && isset($manifest_data["phase_2_sit_4h_sp"])){
-              array_push($template_filenames, "Confirmation SIT profile".$template_suffix);
-            }
+      $redcap_data = json_decode($output, $assoc = TRUE);
 
-            if(isset($manifest_data["phase_2_dexa"])){
-              array_push($template_filenames, "Post DST steroid profile".$template_suffix);
-            }
+      foreach($redcap_data as $manifest_data) {
+        $ensat_id = $manifest_data["shipment_ensat_id"];
+        $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
+        $template_filenames = array();
 
-            if(isset($manifest_data["phase_3_rpv_sp"]) || isset($manifest_data["phase_3_lpv_sp"]) || isset($manifest_data["phase_3_rav_sp"]) || isset($manifest_data["phase_3_lav_sp"])){
-              array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
-            }
+        // These template filenames are case sensitive
+        // All the templates need to exist
+        if(isset($manifest_data["phase_1_sp"])){
+          array_push($template_filenames, "Screening steroid profile".$template_suffix);
+        }
 
-            if(isset($manifest_data["phase_4_fu_sp"])){
-              array_push($template_filenames, "3 month follow up".$template_suffix);
-              array_push($template_filenames, "6-12 month follow up".$template_suffix);
-            }
+        if(isset($manifest_data["phase_2_sit_bl_sp"]) && isset($manifest_data["phase_2_sit_4h_sp"])){
+          array_push($template_filenames, "Confirmation SIT profile".$template_suffix);
+        }
 
-            foreach($template_filenames as $template_filename) {
-              try
-              {
-                  $filled_template = $template->fillTemplate($template_filename, $shipment_prosaldo_id);
+        if(isset($manifest_data["phase_2_dexa"])){
+          array_push($template_filenames, "Post DST steroid profile".$template_suffix);
+        }
 
-                  $doc = new DOMDocument();
-                  $doc->loadHTML($filled_template);
+        if(isset($manifest_data["phase_3_rpv_sp"]) || isset($manifest_data["phase_3_lpv_sp"]) || isset($manifest_data["phase_3_rav_sp"]) || isset($manifest_data["phase_3_lav_sp"])){
+          array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
+        }
 
-                  $header = $doc->getElementsByTagName("header")->item(0);
-                  $footer = $doc->getElementsByTagName("footer")->item(0);
-                  $main = $doc->getElementsByTagName("main")->item(0);
+        if(isset($manifest_data["phase_4_fu_sp"])){
+          array_push($template_filenames, "3 month follow up".$template_suffix);
+          array_push($template_filenames, "6-12 month follow up".$template_suffix);
+        }
 
-                  $filled_main = $doc->saveHTML($main);
-                  $filled_header = empty($header) ? "" : $doc->saveHTML($header);
-                  $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
+        foreach($template_filenames as $template_filename) {
+          try
+          {
+              $filled_template = $template->fillTemplate($template_filename, $shipment_prosaldo_id);
 
-                  array_push($filled_mains, $filled_main);
+              $doc = new DOMDocument();
+              $doc->loadHTML($filled_template);
 
-                  $template_name = str_replace($template_suffix, "", $template_filename);
-                  array_push($filenames, $ensat_id."-".$template_name."-".$shipment_prosaldo_id);
-              }
-              catch (Exception $e)
-              {
-                  $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
-              }
-            }
+              $header = $doc->getElementsByTagName("header")->item(0);
+              $footer = $doc->getElementsByTagName("footer")->item(0);
+              $main = $doc->getElementsByTagName("main")->item(0);
+
+              $filled_main = $doc->saveHTML($main);
+              $filled_header = empty($header) ? "" : $doc->saveHTML($header);
+              $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
+
+              array_push($filled_mains, $filled_main);
+
+              $template_name = str_replace($template_suffix, "", $template_filename);
+              array_push($filenames, $ensat_id."-".$template_name."-".$shipment_prosaldo_id);
+          }
+          catch (Exception $e)
+          {
+              $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
           }
         }
       }
@@ -2310,14 +2338,28 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                         <?php endif;?>
                     </form>
                   </div>
-                  <div class="container syntax-rule">
+                  <div class="container syntax-rule" style="margin-top:20px;">
+                    <p><i>Select the shipment you wish to fill.</i></p>
                     <form action=<?php print $this->getUrl("FillTemplate.php"); ?> method="post" >
-                        <?php if (sizeof($valid_templates) > 0 && sizeof($participant_options) > 0):?>
-                            <button type="submit" name="all" class="btn btn-primary">Fill Template For Shipment Records</button>
-                        <?php else:?>
-                            <button type="submit" name="all" class="btn btn-primary">Fill Template For Shipment Records</button>
-                            <span><i style="color:red"> **At least one record and one template must exist</i></span>
-                        <?php endif;?>
+                      <table class="table" style="width:100%;">
+                          <tbody>
+                              <tr>
+                                  <td style="width:25%;">
+                                      Choose an existing Shipment ID
+                                  </td>
+                                  <td class="data">
+                                      <input id="shipmentID" class="form-control" style="width:initial;" required>
+                                      <input name="shipmentID" id="shipmentID-value" type="hidden">
+                                  </td>
+                              </tr>
+                          </tbody>
+                      </table>
+                      <?php if (sizeof($valid_templates) > 0 && sizeof($participant_options) > 0):?>
+                          <button type="submit" name="all" class="btn btn-primary">Fill Template For Shipment Records</button>
+                      <?php else:?>
+                          <button type="submit" name="all" class="btn btn-primary">Fill Template For Shipment Records</button>
+                          <span><i style="color:red"> **At least one record and one template must exist</i></span>
+                      <?php endif;?>
                     </form>
                 </div>
             </div>

@@ -2,3 +2,4 @@ vendor/
 images/
 templates/
 compiled/
+token.txt
