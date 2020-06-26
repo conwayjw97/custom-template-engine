@@ -1178,6 +1178,9 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
     public function downloadAllTemplates()
     {
+        mkdir(getenv("DOCUMENT_ROOT")."/pdf");
+        mkdir(getenv("DOCUMENT_ROOT")."/zip");
+
         $ensat_id = REDCap::getData()[1][84]["shipment_ensat_id"];
 
         $header = REDCap::filterHtml(preg_replace("/&nbsp;/", " ", $_POST["header-editor"]));
@@ -1254,7 +1257,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             $dompdf->render();
 
             $output = $dompdf->output();
-            file_put_contents(getenv("DOCUMENT_ROOT")."/".$filenames[$i].".pdf", $output);
+            file_put_contents(getenv("DOCUMENT_ROOT")."/pdf/".$filenames[$i].".pdf", $output);
             array_push($outFiles, $filenames[$i].".pdf");
         }
       }
@@ -1262,19 +1265,22 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       // [Entry_ID][Event_ID]
       $zipname = "FilledTemplates.zip";
       $zip = new ZipArchive;
-      $zip->open(getenv("DOCUMENT_ROOT")."/".$zipname, ZipArchive::CREATE);
+      $zip->open(getenv("DOCUMENT_ROOT")."/zip/".$zipname, ZipArchive::CREATE);
       foreach ($outFiles as $outFile){
-        $zip->addFile(getenv("DOCUMENT_ROOT")."/".$outFile, $outFile);
+        $zip->addFile(getenv("DOCUMENT_ROOT")."/pdf/".$outFile, $outFile);
       }
       $zip->close();
 
       header("Content-type: application/zip");
       header("Content-Disposition: attachment; filename=$zipname");
-      header("Content-length: " . filesize(getenv("DOCUMENT_ROOT")."/".$zipname));
+      header("Content-length: " . filesize(getenv("DOCUMENT_ROOT")."/zip/".$zipname));
       header("Pragma: no-cache");
       header("Expires: 0");
       flush();
-      readfile(getenv("DOCUMENT_ROOT")."/".$zipname);
+      readfile(getenv("DOCUMENT_ROOT")."/zip/".$zipname);
+
+      rmdir(getenv("DOCUMENT_ROOT")."/pdf");
+      rmdir(getenv("DOCUMENT_ROOT")."/zip");
     }
 
     /**
