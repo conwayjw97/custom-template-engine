@@ -1178,18 +1178,13 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
     public function downloadAllTemplates()
     {
-        mkdir(getenv("DOCUMENT_ROOT")."/pdf");
-        mkdir(getenv("DOCUMENT_ROOT")."/zip");
-
-        $ensat_id = REDCap::getData()[1][84]["shipment_ensat_id"];
-
         $header = REDCap::filterHtml(preg_replace("/&nbsp;/", " ", $_POST["header-editor"]));
         $footer = REDCap::filterHtml(preg_replace("/&nbsp;/", " ", $_POST["footer-editor"]));
 
         $filled_mains = unserialize(base64_decode($_POST["filled_mains"]));
         $filenames = unserialize(base64_decode($_POST["filenames"]));
 
-        $outFiles = array();
+	$outFiles = array();
 
         for ($i = 0; $i <= count($filled_mains)-1; $i++) {
           if (isset($filled_mains[$i]) && !empty($filled_mains[$i]) && isset($filenames[$i]) && !empty($filenames[$i])){
@@ -1257,30 +1252,26 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             $dompdf->render();
 
             $output = $dompdf->output();
-            file_put_contents(getenv("DOCUMENT_ROOT")."/pdf/".$filenames[$i].".pdf", $output);
+            file_put_contents(APP_PATH_TEMP ."/".$filenames[$i].".pdf", $output);
             array_push($outFiles, $filenames[$i].".pdf");
         }
       }
-
       // [Entry_ID][Event_ID]
       $zipname = "FilledTemplates.zip";
       $zip = new ZipArchive;
-      $zip->open(getenv("DOCUMENT_ROOT")."/zip/".$zipname, ZipArchive::CREATE);
+      $zip->open(APP_PATH_TEMP ."/".$zipname, ZipArchive::CREATE);
       foreach ($outFiles as $outFile){
-        $zip->addFile(getenv("DOCUMENT_ROOT")."/pdf/".$outFile, $outFile);
+        $zip->addFile(APP_PATH_TEMP ."/".$outFile, $outFile);
       }
       $zip->close();
 
       header("Content-type: application/zip");
       header("Content-Disposition: attachment; filename=$zipname");
-      header("Content-length: " . filesize(getenv("DOCUMENT_ROOT")."/zip/".$zipname));
+      header("Content-length: " . filesize(APP_PATH_TEMP ."/".$zipname));
       header("Pragma: no-cache");
       header("Expires: 0");
       flush();
-      readfile(getenv("DOCUMENT_ROOT")."/zip/".$zipname);
-
-      rmdir(getenv("DOCUMENT_ROOT")."/pdf");
-      rmdir(getenv("DOCUMENT_ROOT")."/zip");
+      readfile(APP_PATH_TEMP ."/".$zipname);
     }
 
     /**
@@ -1514,6 +1505,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
     }
 
     public function generateFillAllTemplatesPage(){
+    $shipmentID = $_POST["shipmentID"];
       $rights = REDCap::getUserRights($this->userid);
       if ($rights[$this->userid]["data_export_tool"] === "0")
       {
@@ -1525,7 +1517,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $template = new Template($this->templates_dir, $this->compiled_dir);
       $template_suffix = "_".$this->getProjectId().".html";
 
-      $token_file = fopen(getenv("DOCUMENT_ROOT")."/modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
+      $token_file = fopen("/var/www/html/redcap/modules/custom_template_engine_v3.0.0/token.txt", "r") or die("Unable to open file!");
       $token = trim(fgets($token_file));
       fclose($token_file);
 
@@ -1540,12 +1532,13 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
           'exportCheckboxLabel' => 'false',
           'exportSurveyFields' => 'false',
           'exportDataAccessGroups' => 'false',
-          'returnFormat' => 'json'
+          'returnFormat' => 'json',
+	  'records' => array('32-1')
       );
       $ch = curl_init();
       curl_setopt($ch, CURLOPT_URL, 'http://localhost/api/');
       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+      curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
       curl_setopt($ch, CURLOPT_VERBOSE, 0);
       curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
       curl_setopt($ch, CURLOPT_AUTOREFERER, true);
@@ -1554,8 +1547,10 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       curl_setopt($ch, CURLOPT_FRESH_CONNECT, 1);
       curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data, '', '&'));
       $output = curl_exec($ch);
+      $curlerr = curl_error($ch);
       curl_close($ch);
-
+      if ($curlerr)
+	      die("cURL Error #:" . REDCap::filterHtml($curlerr));
       $redcap_data = json_decode($output, $assoc = TRUE);
 
       foreach($redcap_data as $manifest_data) {
@@ -1565,27 +1560,26 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
         // These template filenames are case sensitive
         // All the templates need to exist
-        if(isset($manifest_data["phase_1_sp"])){
+        if(intval($manifest_data["phase_1_sp"]) >= 1){
           array_push($template_filenames, "Screening steroid profile".$template_suffix);
         }
 
-        if(isset($manifest_data["phase_2_sit_bl_sp"]) && isset($manifest_data["phase_2_sit_4h_sp"])){
-          array_push($template_filenames, "Confirmation SIT profile".$template_suffix);
+        if(intval($manifest_data["phase_2_sit_bl_sp"]) >= 1 || intval($manifest_data["phase_2_sit_4h_sp"]) >= 1){
+          array_push($template_filenames, "Confirmation SIT steroid profile".$template_suffix);
         }
 
-        if(isset($manifest_data["phase_2_dexa"])){
+        if(intval($manifest_data["phase_2_dexa"]) >= 1){
           array_push($template_filenames, "Post DST steroid profile".$template_suffix);
         }
 
-        if(isset($manifest_data["phase_3_rpv_sp"]) || isset($manifest_data["phase_3_lpv_sp"]) || isset($manifest_data["phase_3_rav_sp"]) || isset($manifest_data["phase_3_lav_sp"])){
+        if(intval($manifest_data["phase_3_rpv_sp"])>= 1 || intval($manifest_data["phase_3_lpv_sp"]) >=1 || intval($manifest_data["phase_3_rav_sp"]) >= 1 || intval($manifest_data["phase_3_lav_sp"]) >= 1){
           array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
         }
 
-        if(isset($manifest_data["phase_4_fu_sp"])){
-          array_push($template_filenames, "3 month follow up".$template_suffix);
-          array_push($template_filenames, "6-12 month follow up".$template_suffix);
+        if(intval($manifest_data["phase_4_fu_sp"]) >= 1){
+          array_push($template_filenames, "3 month follow-up steroid profile".$template_suffix);
+          array_push($template_filenames, "6-12 month follow-up steroid profile".$template_suffix);
         }
-
         foreach($template_filenames as $template_filename) {
           try
           {
@@ -2354,7 +2348,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                                       Choose an existing Shipment ID
                                   </td>
                                   <td class="data">
-                                      <input id="shipmentID" class="form-control" style="width:initial;" required>
+                                      <input id=shipmentID" class="form-control" style="width:initial;" required>
                                       <input name="shipmentID" id="shipmentID-value" type="hidden">
                                   </td>
                               </tr>
