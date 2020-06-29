@@ -1183,8 +1183,9 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
         $filled_mains = unserialize(base64_decode($_POST["filled_mains"]));
         $filenames = unserialize(base64_decode($_POST["filenames"]));
+        $shipmentID = $_POST["shipment_id"];
 
-	$outFiles = array();
+	      $outFiles = array();
 
         for ($i = 0; $i <= count($filled_mains)-1; $i++) {
           if (isset($filled_mains[$i]) && !empty($filled_mains[$i]) && isset($filenames[$i]) && !empty($filenames[$i])){
@@ -1257,7 +1258,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
         }
       }
       // [Entry_ID][Event_ID]
-      $zipname = "FilledTemplates.zip";
+      $zipname = $shipmentID.".zip";
       $zip = new ZipArchive;
       $zip->open(APP_PATH_TEMP ."/".$zipname, ZipArchive::CREATE);
       foreach ($outFiles as $outFile){
@@ -1505,19 +1506,20 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
     }
 
     public function generateFillAllTemplatesPage(){
-    $shipmentID = $_POST["shipmentID"];
       $rights = REDCap::getUserRights($this->userid);
       if ($rights[$this->userid]["data_export_tool"] === "0")
       {
           exit("<div class='red'>You don't have premission to view this page</div><a href='" . $this->getUrl("index.php") . "'>Back to Front</a>");
       }
 
+      $shipmentID = $_POST["shipmentID"];
+
       $filled_mains = array();
       $filenames = array();
       $template = new Template($this->templates_dir, $this->compiled_dir);
       $template_suffix = "_".$this->getProjectId().".html";
 
-      $token_file = fopen("/var/www/html/redcap/modules/custom_template_engine_v3.0.0/token.txt", "r") or die("Unable to open file!");
+      $token_file = fopen(getenv("DOCUMENT_ROOT")."/modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
       $token = trim(fgets($token_file));
       fclose($token_file);
 
@@ -1533,7 +1535,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
           'exportSurveyFields' => 'false',
           'exportDataAccessGroups' => 'false',
           'returnFormat' => 'json',
-	  'records' => array('32-1')
+	        'records' => array($shipmentID)
       );
       $ch = curl_init();
       curl_setopt($ch, CURLOPT_URL, 'http://localhost/api/');
@@ -1677,6 +1679,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                   </div>
                   <input id="filled_mains" name="filled_mains" type="hidden" value="<?php print base64_encode(serialize($filled_mains));?>">
                   <input id="filenames" name="filenames" type="hidden" value="<?php print base64_encode(serialize($filenames));?>">
+                  <input id="shipment_id" name="shipment_id" type="hidden" value="<?php print $shipmentID;?>">
               </form>
           </div>
       </div>
@@ -2348,8 +2351,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                                       Choose an existing Shipment ID
                                   </td>
                                   <td class="data">
-                                      <input id=shipmentID" class="form-control" style="width:initial;" required>
-                                      <input name="shipmentID" id="shipmentID-value" type="hidden">
+                                      <input id="shipmentIDs" name="shipmentID" class="form-control" style="width:initial;" required>
                                   </td>
                               </tr>
                           </tbody>
