@@ -1555,139 +1555,146 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 	      die("cURL Error #:" . REDCap::filterHtml($curlerr));
       $redcap_data = json_decode($output, $assoc = TRUE);
 
-      foreach($redcap_data as $manifest_data) {
-        $ensat_id = $manifest_data["shipment_ensat_id"];
-        $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
-        $template_filenames = array();
-
-        // These template filenames are case sensitive
-        // All the templates need to exist
-        if(intval($manifest_data["phase_1_sp"]) >= 1){
-          array_push($template_filenames, "Screening steroid profile".$template_suffix);
-        }
-
-        if(intval($manifest_data["phase_2_sit_bl_sp"]) >= 1 || intval($manifest_data["phase_2_sit_4h_sp"]) >= 1){
-          array_push($template_filenames, "Confirmation SIT steroid profile".$template_suffix);
-        }
-
-        if(intval($manifest_data["phase_2_dexa"]) >= 1){
-          array_push($template_filenames, "Post DST steroid profile".$template_suffix);
-        }
-
-        if(intval($manifest_data["phase_3_rpv_sp"])>= 1 || intval($manifest_data["phase_3_lpv_sp"]) >=1 || intval($manifest_data["phase_3_rav_sp"]) >= 1 || intval($manifest_data["phase_3_lav_sp"]) >= 1){
-          array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
-        }
-
-        if(intval($manifest_data["phase_4_fu_sp"]) >= 1){
-          array_push($template_filenames, "3 month follow-up steroid profile".$template_suffix);
-          array_push($template_filenames, "6-12 month follow-up steroid profile".$template_suffix);
-        }
-        foreach($template_filenames as $template_filename) {
-          try
-          {
-              $filled_template = $template->fillTemplate($template_filename, $shipment_prosaldo_id);
-
-              $doc = new DOMDocument();
-              $doc->loadHTML($filled_template);
-
-              $header = $doc->getElementsByTagName("header")->item(0);
-              $footer = $doc->getElementsByTagName("footer")->item(0);
-              $main = $doc->getElementsByTagName("main")->item(0);
-
-              $filled_main = $doc->saveHTML($main);
-              $filled_header = empty($header) ? "" : $doc->saveHTML($header);
-              $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
-
-              array_push($filled_mains, $filled_main);
-
-              $template_name = str_replace($template_suffix, "", $template_filename);
-              array_push($filenames, $ensat_id."-".$template_name."-".$shipment_prosaldo_id);
-          }
-          catch (Exception $e)
-          {
-              $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
-          }
-        }
+      if(empty($redcap_data)){
+        echo "<script type='text/javascript'>alert('Shipment ID invalid.');</script>";
       }
 
-      ?>
-      <link rel="stylesheet" href="<?php print $this->getUrl("app.css"); ?>" type="text/css">
-      <div class="container">
-          <div class="jumbotron">
-              <div class="row">
-                  <div class="col-md-10">
-                      <h3>Download Templates</h3>
-                  </div>
-                  <div class="col-md-2">
-                      <a class="btn btn-primary" style="color:white" href="<?php print $this->getUrl("index.php");?>">Back to Front</a>
-                  </div>
-              </div>
-              <hr/>
-              <?php if (!empty($errors)) :?>
-                  <div class="red container">
-                      <h4>Error filling template! Please contact your REDCap administrator!</h4>
-                      <p><a id="readmore-link" href="#">Click to view errors</a></p>
-                      <div id="readmore" style="display:none">
-                          <?php
-                              foreach($errors as $error)
-                              {
-                                  print "<p>$error</p>";
-                              }
-                          ?>
-                      </div>
-                  </div>
-                  <hr/>
-              <?php endif;?>
-              <div class="container syntax-rule">
-                  <h4><u>Instructions</u></h4>
-                  <p>You may download the report as is, or edit until you're satisfied, then download. You may also copy/paste the report into another editor and save, if you prefer a format other than PDF.</p>
-                  <p><strong style="color:red">**IMPORTANT**</strong></p>
-                  <ul>
-                      <li>Tables and images may be cut off in PDF, because of size. If so, there is no current fix and you must edit your content until it fits. Some suggestions are to break up content into
-                      multiple tables, shrink font, etc...</li>
-                      <li>Any image uploaded to the plugin will be saved for future use by <strong>ALL</strong> users. <strong>Do not upload any identifying images.</strong></li>
-                      <li>Calculations cannot be performed in the Template Engine, so raw values have been exported.</li>
-                      <li>Fields in a repeatable event or instrument had their data pulled from the latest instance.</li>
-                      <?php if ($rights[$user]["data_export_tool"] === "2") :?>
-                          <li> Data has been de-identified according to user access rights</li>
-                      <?php endif;?>
-                  </ul>
-              </div>
-              <br/>
-              <form action="<?php print $this->getUrl("DownloadAllFilledTemplates.php"); ?>" method="post">
-                  <div class="row" style="margin-bottom:20px">
-                      <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary">Download PDFs</button></div>
-                      <div class="col-md-3"><button id="download-pdf" type="button" class="btn btn-primary" data-toggle="modal" data-target="#downloadInstrumentModal" style="display:none">Download Instrument Data</button></div>
-                  </div>
-                  <div class="collapsible-container">
-                      <button type="button" class="collapsible">Add Header **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
-                      <div class="collapsible-content">
-                          <p>Anything in the header will appear at the top of every page in the template. <strong>If the header content is too big, it will overlap template data in the PDF.</strong></p>
-                          <textarea cols="80" id="header-editor" name="header-editor" rows="10">
-                              <?php print $filled_header;?>
-                          </textarea>
-                      </div>
-                  </div>
-                  <div class="collapsible-container">
-                      <button type="button" class="collapsible">Add Footer **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
-                      <div class="collapsible-content">
-                          <p>Anything in the footer will appear at the bottom of every page in the template. <strong>If the footer content is too big, it will cuttoff in the PDF.</strong></p>
-                          <textarea cols="80" id="footer-editor" name="footer-editor" rows="10">
-                              <?php print $filled_footer;?>
-                          </textarea>
-                      </div>
-                  </div>
-                  <input id="filled_mains" name="filled_mains" type="hidden" value="<?php print base64_encode(serialize($filled_mains));?>">
-                  <input id="filenames" name="filenames" type="hidden" value="<?php print base64_encode(serialize($filenames));?>">
-                  <input id="shipment_id" name="shipment_id" type="hidden" value="<?php print $shipmentID;?>">
-              </form>
-          </div>
-      </div>
-      <script src="<?php print $this->getUrl("vendor/ckeditor/ckeditor/ckeditor.js"); ?>"></script>
-      <script src="<?php print $this->getUrl("scripts.js"); ?>"></script>
+      else{
+        
+        foreach($redcap_data as $manifest_data) {
+          $ensat_id = $manifest_data["shipment_ensat_id"];
+          $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
+          $template_filenames = array();
+
+          // These template filenames are case sensitive
+          // All the templates need to exist
+          if(intval($manifest_data["phase_1_sp"]) >= 1){
+            array_push($template_filenames, "Screening steroid profile".$template_suffix);
+          }
+
+          if(intval($manifest_data["phase_2_sit_bl_sp"]) >= 1 || intval($manifest_data["phase_2_sit_4h_sp"]) >= 1){
+            array_push($template_filenames, "Confirmation SIT steroid profile".$template_suffix);
+          }
+
+          if(intval($manifest_data["phase_2_dexa"]) >= 1){
+            array_push($template_filenames, "Post DST steroid profile".$template_suffix);
+          }
+
+          if(intval($manifest_data["phase_3_rpv_sp"])>= 1 || intval($manifest_data["phase_3_lpv_sp"]) >=1 || intval($manifest_data["phase_3_rav_sp"]) >= 1 || intval($manifest_data["phase_3_lav_sp"]) >= 1){
+            array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
+          }
+
+          if(intval($manifest_data["phase_4_fu_sp"]) >= 1){
+            array_push($template_filenames, "3 month follow-up steroid profile".$template_suffix);
+            array_push($template_filenames, "6-12 month follow-up steroid profile".$template_suffix);
+          }
+          foreach($template_filenames as $template_filename) {
+            try
+            {
+                $filled_template = $template->fillTemplate($template_filename, $shipment_prosaldo_id);
+
+                $doc = new DOMDocument();
+                $doc->loadHTML($filled_template);
+
+                $header = $doc->getElementsByTagName("header")->item(0);
+                $footer = $doc->getElementsByTagName("footer")->item(0);
+                $main = $doc->getElementsByTagName("main")->item(0);
+
+                $filled_main = $doc->saveHTML($main);
+                $filled_header = empty($header) ? "" : $doc->saveHTML($header);
+                $filled_footer = empty($footer)? "" : $doc->saveHTML($footer);
+
+                array_push($filled_mains, $filled_main);
+
+                $template_name = str_replace($template_suffix, "", $template_filename);
+                array_push($filenames, $ensat_id."-".$template_name."-".$shipment_prosaldo_id);
+            }
+            catch (Exception $e)
+            {
+                $errors[] = "<b>ERROR</b> [" . $e->getCode() . "] LINE [" . $e->getLine() . "] FILE [" . $e->getFile() . "] " . str_replace("Undefined index", "Field name does not exist", $e->getMessage());
+            }
+          }
+        }
+
+        ?>
+        <link rel="stylesheet" href="<?php print $this->getUrl("app.css"); ?>" type="text/css">
+        <div class="container">
+            <div class="jumbotron">
+                <div class="row">
+                    <div class="col-md-10">
+                        <h3>Download Templates</h3>
+                    </div>
+                    <div class="col-md-2">
+                        <a class="btn btn-primary" style="color:white" href="<?php print $this->getUrl("index.php");?>">Back to Front</a>
+                    </div>
+                </div>
+                <hr/>
+                <?php if (!empty($errors)) :?>
+                    <div class="red container">
+                        <h4>Error filling template! Please contact your REDCap administrator!</h4>
+                        <p><a id="readmore-link" href="#">Click to view errors</a></p>
+                        <div id="readmore" style="display:none">
+                            <?php
+                                foreach($errors as $error)
+                                {
+                                    print "<p>$error</p>";
+                                }
+                            ?>
+                        </div>
+                    </div>
+                    <hr/>
+                <?php endif;?>
+                <div class="container syntax-rule">
+                    <h4><u>Instructions</u></h4>
+                    <p>You may download the report as is, or edit until you're satisfied, then download. You may also copy/paste the report into another editor and save, if you prefer a format other than PDF.</p>
+                    <p><strong style="color:red">**IMPORTANT**</strong></p>
+                    <ul>
+                        <li>Tables and images may be cut off in PDF, because of size. If so, there is no current fix and you must edit your content until it fits. Some suggestions are to break up content into
+                        multiple tables, shrink font, etc...</li>
+                        <li>Any image uploaded to the plugin will be saved for future use by <strong>ALL</strong> users. <strong>Do not upload any identifying images.</strong></li>
+                        <li>Calculations cannot be performed in the Template Engine, so raw values have been exported.</li>
+                        <li>Fields in a repeatable event or instrument had their data pulled from the latest instance.</li>
+                        <?php if ($rights[$user]["data_export_tool"] === "2") :?>
+                            <li> Data has been de-identified according to user access rights</li>
+                        <?php endif;?>
+                    </ul>
+                </div>
+                <br/>
+                <form action="<?php print $this->getUrl("DownloadAllFilledTemplates.php"); ?>" method="post">
+                    <div class="row" style="margin-bottom:20px">
+                        <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary">Download PDFs</button></div>
+                        <div class="col-md-3"><button id="download-pdf" type="button" class="btn btn-primary" data-toggle="modal" data-target="#downloadInstrumentModal" style="display:none">Download Instrument Data</button></div>
+                    </div>
+                    <div class="collapsible-container">
+                        <button type="button" class="collapsible">Add Header **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
+                        <div class="collapsible-content">
+                            <p>Anything in the header will appear at the top of every page in the template. <strong>If the header content is too big, it will overlap template data in the PDF.</strong></p>
+                            <textarea cols="80" id="header-editor" name="header-editor" rows="10">
+                                <?php print $filled_header;?>
+                            </textarea>
+                        </div>
+                    </div>
+                    <div class="collapsible-container">
+                        <button type="button" class="collapsible">Add Footer **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
+                        <div class="collapsible-content">
+                            <p>Anything in the footer will appear at the bottom of every page in the template. <strong>If the footer content is too big, it will cuttoff in the PDF.</strong></p>
+                            <textarea cols="80" id="footer-editor" name="footer-editor" rows="10">
+                                <?php print $filled_footer;?>
+                            </textarea>
+                        </div>
+                    </div>
+                    <input id="filled_mains" name="filled_mains" type="hidden" value="<?php print base64_encode(serialize($filled_mains));?>">
+                    <input id="filenames" name="filenames" type="hidden" value="<?php print base64_encode(serialize($filenames));?>">
+                    <input id="shipment_id" name="shipment_id" type="hidden" value="<?php print $shipmentID;?>">
+                </form>
+            </div>
+        </div>
+        <script src="<?php print $this->getUrl("vendor/ckeditor/ckeditor/ckeditor.js"); ?>"></script>
+        <script src="<?php print $this->getUrl("scripts.js"); ?>"></script>
       <?php
           $this->initializeEditor("header-editor", 200);
           $this->initializeEditor("footer-editor", 200);
+        }
     }
 
     /**
