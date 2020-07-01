@@ -1187,6 +1187,9 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
 	      $outFiles = array();
 
+        // YYYYMMDDHHMMSS format
+        $date_time = date("Ymdhis");
+
         // For each filled template, create a pdf for it
         for ($i = 0; $i <= count($filled_mains)-1; $i++) {
           if (isset($filled_mains[$i]) && !empty($filled_mains[$i]) && isset($filenames[$i]) && !empty($filenames[$i])){
@@ -1241,13 +1244,11 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
             $doc->appendChild($style);
 
-            // Add page numbers to the footer of every page
+            // Create HTML of the PDF
             $dompdf = new Dompdf();
             $dompdf->set_option("isHtml5ParserEnabled", true);
             $dompdf->set_option("isPhpEnabled", true);
             $dompdf->loadHtml($doc->saveHtml());
-
-            // Setup the paper size and orientation
             $dompdf->setPaper("letter", "portrait");
 
             // Render the HTML as PDF
@@ -1255,7 +1256,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
             // Save the PDF's filename in an array so it can be added to the zip
             $output = $dompdf->output();
-            file_put_contents(APP_PATH_TEMP ."/".$filenames[$i].".pdf", $output);
+            file_put_contents(APP_PATH_TEMP.$date_time."_".$filenames[$i].".pdf", $output);
             array_push($outFiles, $filenames[$i].".pdf");
         }
       }
@@ -1263,20 +1264,20 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       // Create zip frpm PDF filename array
       $zipname = $shipmentID.".zip";
       $zip = new ZipArchive;
-      $zip->open(APP_PATH_TEMP ."/".$zipname, ZipArchive::CREATE);
+      $zip->open(APP_PATH_TEMP."/".$date_time."_".$zipname, ZipArchive::CREATE);
       foreach ($outFiles as $outFile){
-        $zip->addFile(APP_PATH_TEMP ."/".$outFile, $outFile);
+        $zip->addFile(APP_PATH_TEMP ."/".$date_time."_".$outFile, $outFile);
       }
       $zip->close();
 
       // Download zip
       header("Content-type: application/zip");
       header("Content-Disposition: attachment; filename=$zipname");
-      header("Content-length: " . filesize(APP_PATH_TEMP ."/".$zipname));
+      header("Content-length: " . filesize(APP_PATH_TEMP.$date_time."_".$zipname));
       header("Pragma: no-cache");
       header("Expires: 0");
       flush();
-      readfile(APP_PATH_TEMP ."/".$zipname);
+      readfile(APP_PATH_TEMP.$date_time."_".$zipname);
 
       // Log download
       REDCap::logEvent("Template ZIP for shipment ID ".$shipmentID." created and downloaded.");
@@ -1526,7 +1527,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $template_suffix = "_".$this->getProjectId().".html";
 
       // Get API token from config
-      $token = $this->getProjectSettings()["api-token"];
+      $token = trim($this->getProjectSettings()["api-token"]["value"]);
 
       // Pull record data via API request
       $data = array(
