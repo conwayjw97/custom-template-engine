@@ -1513,16 +1513,17 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       }
 
       $shipmentID = $_POST["shipmentID"];
-
       $filled_mains = array();
       $filenames = array();
       $template = new Template($this->templates_dir, $this->compiled_dir);
       $template_suffix = "_".$this->getProjectId().".html";
 
-      $token_file = fopen(getenv("DOCUMENT_ROOT")."/modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
+      // Get API token (Using getenv as APP_PATH_DOCROOT leads to a parallel subdirectory of the modules folder)
+      $token_file = fopen(getenv("DOCUMENT_ROOT")."modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
       $token = trim(fgets($token_file));
       fclose($token_file);
 
+      // Pull record data via API request
       $data = array(
           'token' => $token,
           'content' => 'record',
@@ -1538,7 +1539,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 	        'records' => array($shipmentID)
       );
       $ch = curl_init();
-      curl_setopt($ch, CURLOPT_URL, 'http://localhost/api/');
+      curl_setopt($ch, CURLOPT_URL, APP_PATH_WEBROOT_FULL."api/");
       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
       curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
       curl_setopt($ch, CURLOPT_VERBOSE, 0);
@@ -1555,12 +1556,16 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 	      die("cURL Error #:" . REDCap::filterHtml($curlerr));
       $redcap_data = json_decode($output, $assoc = TRUE);
 
+      // If nothing is returned from the API call, we can assume the shipment ID is invalid
       if(empty($redcap_data)){
         echo "<script type='text/javascript'>alert('Shipment ID invalid.');</script>";
       }
 
+      // If something is returned from the API call, we can assume the shipment ID is valid.
+      // We then create the filled templates and display the page
       else{
         
+        // For each manifest, check variable entries which correspond to templates
         foreach($redcap_data as $manifest_data) {
           $ensat_id = $manifest_data["shipment_ensat_id"];
           $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
@@ -1588,6 +1593,8 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             array_push($template_filenames, "3 month follow-up steroid profile".$template_suffix);
             array_push($template_filenames, "6-12 month follow-up steroid profile".$template_suffix);
           }
+
+          // For each template that needs to be filled, fill it with the relevant record data
           foreach($template_filenames as $template_filename) {
             try
             {
