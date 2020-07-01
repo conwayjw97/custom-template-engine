@@ -48,15 +48,41 @@
             "type": "text",
             "repeatable": false,
             "super-users-only": true
-        }   
+        }
     ],
     "project-settings": [
+            {
+                "key": "api-token",
+                "name": "API Token",
+                "required": true,
+                "type": "text",
+                "repeatable": false,
+                "super-users-only": false
+          },
+          {
+              "key": "aliases",
+              "name": "Variable - Template aliases",
+              "type": "sub_settings",
+              "repeatable": true,
+              "sub_settings": [
+                {
+                    "key": "template_alias",
+                    "name": "Template Alias",
+                    "type": "text"
+                },
+                {
+                    "key": "variable_alias",
+                    "name": "Variable Alias",
+                    "type": "text"
+                }
+            ]
+        },
         {
             "key": "save-report-to-repo",
             "name": "Save Filled Reports to File Repository?",
             "type": "checkbox",
             "repeatable": false,
             "super-users-only": true
-        } 
+        }
     ]
 }

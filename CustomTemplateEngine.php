@@ -1525,10 +1525,8 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $template = new Template($this->templates_dir, $this->compiled_dir);
       $template_suffix = "_".$this->getProjectId().".html";
 
-      // Get API token (Using getenv as APP_PATH_DOCROOT leads to a parallel subdirectory of the modules folder)
-      $token_file = fopen(getenv("DOCUMENT_ROOT")."/modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
-      $token = trim(fgets($token_file));
-      fclose($token_file);
+      // Get API token from config
+      $token = $this->getProjectSettings()["api-token"];
 
       // Pull record data via API request
       $data = array(
