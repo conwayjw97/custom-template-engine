@@ -1187,6 +1187,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
 
 	      $outFiles = array();
 
+        // For each filled template, create a pdf for it
         for ($i = 0; $i <= count($filled_mains)-1; $i++) {
           if (isset($filled_mains[$i]) && !empty($filled_mains[$i]) && isset($filenames[$i]) && !empty($filenames[$i])){
             $doc = new DOMDocument();
@@ -1252,12 +1253,14 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             // Render the HTML as PDF
             $dompdf->render();
 
+            // Save the PDF's filename in an array so it can be added to the zip
             $output = $dompdf->output();
             file_put_contents(APP_PATH_TEMP ."/".$filenames[$i].".pdf", $output);
             array_push($outFiles, $filenames[$i].".pdf");
         }
       }
-      // [Entry_ID][Event_ID]
+
+      // Create zip frpm PDF filename array
       $zipname = $shipmentID.".zip";
       $zip = new ZipArchive;
       $zip->open(APP_PATH_TEMP ."/".$zipname, ZipArchive::CREATE);
@@ -1266,6 +1269,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       }
       $zip->close();
 
+      // Download zip
       header("Content-type: application/zip");
       header("Content-Disposition: attachment; filename=$zipname");
       header("Content-length: " . filesize(APP_PATH_TEMP ."/".$zipname));
@@ -1273,6 +1277,9 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       header("Expires: 0");
       flush();
       readfile(APP_PATH_TEMP ."/".$zipname);
+
+      // Log download
+      REDCap::logEvent("Template ZIP for shipment ID ".$shipmentID." created and downloaded.");
     }
 
     /**
@@ -1697,6 +1704,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             </div>
         </div>
         <script>
+        // Display a message for 3 seconds after the download button is pressed
         function downloadMessage(message) {
           document.getElementById("download-message").innerHTML = message;
           setTimeout(function(){
