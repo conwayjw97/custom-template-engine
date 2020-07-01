@@ -1519,7 +1519,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $template_suffix = "_".$this->getProjectId().".html";
 
       // Get API token (Using getenv as APP_PATH_DOCROOT leads to a parallel subdirectory of the modules folder)
-      $token_file = fopen(getenv("DOCUMENT_ROOT")."modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
+      $token_file = fopen(getenv("DOCUMENT_ROOT")."/modules/custom_template_engine_v2.9.4/token.txt", "r") or die("Unable to open file!");
       $token = trim(fgets($token_file));
       fclose($token_file);
 
@@ -1564,7 +1564,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       // If something is returned from the API call, we can assume the shipment ID is valid.
       // We then create the filled templates and display the page
       else{
-        
+
         // For each manifest, check variable entries which correspond to templates
         foreach($redcap_data as $manifest_data) {
           $ensat_id = $manifest_data["shipment_ensat_id"];
@@ -1669,8 +1669,8 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                 <br/>
                 <form action="<?php print $this->getUrl("DownloadAllFilledTemplates.php"); ?>" method="post">
                     <div class="row" style="margin-bottom:20px">
-                        <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary">Download PDFs</button></div>
-                        <div class="col-md-3"><button id="download-pdf" type="button" class="btn btn-primary" data-toggle="modal" data-target="#downloadInstrumentModal" style="display:none">Download Instrument Data</button></div>
+                        <div class="col-md-2"><button id="download-pdf" type="submit" class="btn btn-primary" onclick="downloadMessage('Creating .zip, please wait...')">Download PDFs</button></div>
+                        <div class="col-md-3"><p id="download-message"></p></div>
                     </div>
                     <div class="collapsible-container">
                         <button type="button" class="collapsible">Add Header **Optional** <span class="fas fa-caret-down"></span><span class="fas fa-caret-up"></span></button>
@@ -1696,6 +1696,14 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                 </form>
             </div>
         </div>
+        <script>
+        function downloadMessage(message) {
+          document.getElementById("download-message").innerHTML = message;
+          setTimeout(function(){
+            document.getElementById("download-message").innerHTML = "";
+          }, 3000);
+        }
+        </script>
         <script src="<?php print $this->getUrl("vendor/ckeditor/ckeditor/ckeditor.js"); ?>"></script>
         <script src="<?php print $this->getUrl("scripts.js"); ?>"></script>
       <?php
