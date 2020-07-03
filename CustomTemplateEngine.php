@@ -1525,9 +1525,8 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $filenames = array();
       $template = new Template($this->templates_dir, $this->compiled_dir);
       $template_suffix = "_".$this->getProjectId().".html";
-
-      print_r($this->getProjectSettings()["variable"]);
-      print_r($this->getProjectSettings()["template"]);
+      $chosen_variables = $this->getProjectSettings()["variable"]["value"];
+      $chosen_templates = $this->getProjectSettings()["template"]["value"];
 
       // Get API token from config
       $token = trim($this->getProjectSettings()["api-token"]["value"]);
@@ -1538,7 +1537,6 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       }
 
       else{
-
         // Pull record data via API request
         $data = array(
             'token' => $token,
@@ -1580,34 +1578,19 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
         // If something is returned from the API call, we can assume the shipment ID is valid.
         // We then create the filled templates and display the page
         else{
-
           // For each manifest, check variable entries which correspond to templates
           foreach($redcap_data as $manifest_data) {
             $ensat_id = $manifest_data["shipment_ensat_id"];
             $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
             $template_filenames = array();
 
-            // These template filenames are case sensitive
-            // All the templates need to exist
-            if(intval($manifest_data["phase_1_sp"]) >= 1){
-              array_push($template_filenames, "Screening steroid profile".$template_suffix);
-            }
-
-            if(intval($manifest_data["phase_2_sit_bl_sp"]) >= 1 || intval($manifest_data["phase_2_sit_4h_sp"]) >= 1){
-              array_push($template_filenames, "Confirmation SIT steroid profile".$template_suffix);
-            }
-
-            if(intval($manifest_data["phase_2_dexa"]) >= 1){
-              array_push($template_filenames, "Post DST steroid profile".$template_suffix);
-            }
-
-            if(intval($manifest_data["phase_3_rpv_sp"])>= 1 || intval($manifest_data["phase_3_lpv_sp"]) >=1 || intval($manifest_data["phase_3_rav_sp"]) >= 1 || intval($manifest_data["phase_3_lav_sp"]) >= 1){
-              array_push($template_filenames, "Adrenal venous steroid profile".$template_suffix);
-            }
-
-            if(intval($manifest_data["phase_4_fu_sp"]) >= 1){
-              array_push($template_filenames, "3 month follow-up steroid profile".$template_suffix);
-              array_push($template_filenames, "6-12 month follow-up steroid profile".$template_suffix);
+            for($i=0; $i<count($chosen_variables); $i++){
+              // If this chosen variable has a value greater than 1, fill the corresponding chosen template
+              // These template filenames are case sensitive
+              // All the templates need to exist
+              if(intval($manifest_data[$chosen_variables[$i]]) >= 1){
+                array_push($template_filenames, $chosen_templates[$i].$template_suffix);
+              }
             }
 
             // For each template that needs to be filled, fill it with the relevant record data
