@@ -60,19 +60,19 @@
                 "super-users-only": false
           },
           {
-              "key": "aliases",
-              "name": "Variable - Template aliases",
+              "key": "links",
+              "name": "Variable - Template Links",
               "type": "sub_settings",
               "repeatable": true,
               "sub_settings": [
                 {
-                    "key": "template_alias",
-                    "name": "Template Alias",
+                    "key": "variable",
+                    "name": "Variable Name",
                     "type": "text"
                 },
                 {
-                    "key": "variable_alias",
-                    "name": "Variable Alias",
+                    "key": "template",
+                    "name": "Template Name",
                     "type": "text"
                 }
             ]
