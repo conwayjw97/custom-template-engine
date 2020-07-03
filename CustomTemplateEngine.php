@@ -1527,8 +1527,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
       $template_suffix = "_".$this->getProjectId().".html";
       $chosen_variables = $this->getProjectSettings()["variable"]["value"];
       $chosen_templates = $this->getProjectSettings()["template"]["value"];
-
-      // Get API token from config
+      $naming_variable = trim($this->getProjectSettings()["naming-variable"]["value"]);
       $token = trim($this->getProjectSettings()["api-token"]["value"]);
 
       // Check if an API token was provided
@@ -1543,7 +1542,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             'content' => 'record',
             'format' => 'json',
             'type' => 'flat',
-            'forms' => array('manifest'),
+            'fields' => array_push($chosen_variables, $naming_variable),
             'rawOrLabel' => 'raw',
             'rawOrLabelHeaders' => 'raw',
             'exportCheckboxLabel' => 'false',
@@ -1570,6 +1569,9 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
   	      die("cURL Error #:" . REDCap::filterHtml($curlerr));
         $redcap_data = json_decode($output, $assoc = TRUE);
 
+        // Remove the naming variable added for the API request
+        array_pop($chosen_variables);
+
         // If nothing is returned from the API call, we can assume the shipment ID is invalid
         if(empty($redcap_data)){
           echo "<script type='text/javascript'>alert('Shipment ID invalid.');</script>";
@@ -1579,16 +1581,14 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
         // We then create the filled templates and display the page
         else{
           // For each manifest, check variable entries which correspond to templates
-          foreach($redcap_data as $manifest_data) {
-            $ensat_id = $manifest_data["shipment_ensat_id"];
-            $shipment_prosaldo_id = $manifest_data["shipment_prosaldo_id"];
+          foreach($redcap_data as $data) {
             $template_filenames = array();
 
             for($i=0; $i<count($chosen_variables); $i++){
               // If this chosen variable has a value greater than 1, fill the corresponding chosen template
               // These template filenames are case sensitive
               // All the templates need to exist
-              if(intval($manifest_data[$chosen_variables[$i]]) >= 1){
+              if(intval($data[$chosen_variables[$i]]) >= 1){
                 array_push($template_filenames, $chosen_templates[$i].$template_suffix);
               }
             }
@@ -1597,7 +1597,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
             foreach($template_filenames as $template_filename) {
               try
               {
-                  $filled_template = $template->fillTemplate($template_filename, $shipment_prosaldo_id);
+                  $filled_template = $template->fillTemplate($template_filename, $shipmentID);
 
                   $doc = new DOMDocument();
                   $doc->loadHTML($filled_template);
@@ -1613,7 +1613,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                   array_push($filled_mains, $filled_main);
 
                   $template_name = str_replace($template_suffix, "", $template_filename);
-                  array_push($filenames, $ensat_id."-".$template_name."-".$shipment_prosaldo_id);
+                  array_push($filenames, $data[$naming_variable]."-".$template_name."-".$shipmentID);
               }
               catch (Exception $e)
               {

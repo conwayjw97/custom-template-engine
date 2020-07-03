@@ -60,6 +60,14 @@
                 "super-users-only": false
           },
           {
+              "key": "naming-variable",
+              "name": "File ID Variable",
+              "required": true,
+              "type": "text",
+              "repeatable": false,
+              "super-users-only": false
+          },
+          {
               "key": "links",
               "name": "Variable - Template Links",
               "type": "sub_settings",
