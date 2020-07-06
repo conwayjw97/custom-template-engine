@@ -1613,7 +1613,7 @@ class CustomTemplateEngine extends \ExternalModules\AbstractExternalModule
                   array_push($filled_mains, $filled_main);
 
                   $template_name = str_replace($template_suffix, "", $template_filename);
-                  array_push($filenames, $data[$naming_variable]."-".$template_name."-".$shipmentID);
+                  array_push($filenames, $data[$naming_variable]." - ".$template_name." - ".$shipmentID);
               }
               catch (Exception $e)
               {
