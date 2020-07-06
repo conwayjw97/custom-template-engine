@@ -62,7 +62,7 @@
           {
               "key": "naming-variable",
               "name": "File ID Variable",
-              "required": true,
+              "required": false,
               "type": "text",
               "repeatable": false,
               "super-users-only": false
